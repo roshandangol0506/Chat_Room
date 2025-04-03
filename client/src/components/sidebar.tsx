@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { MessageSquare, Plus, Settings, Edit, Key, LogOut, Save, Camera, X, Delete, Trash, ActivitySquare, ActivitySquareIcon, Circle } from "lucide-react"
 import axios from "axios"
+import { toast } from "sonner"
 
 type SidebarProps = {
   rooms: { _id: string; roomName: string; admin: string }[]
@@ -138,43 +139,50 @@ export default function Sidebar({
 
   const handleSavePassword = async () => {
     if (!currentPassword) {
-      setProfileError("Current password is required")
-      return
+      toast("Current password is required");
+      return;
     }
 
     if (!newPassword) {
-      setProfileError("New password is required")
-      return
+      toast("New password is required");
+      return;
     }
 
     if (newPassword !== confirmPassword) {
-      setProfileError("Passwords do not match")
-      return
+      toast("New Passwords do not match with confirm new password");
+      return;
     }
 
     try {
-        if (!loginUser) {
-            setError("Login user data not available");
-            return;
-          }
-        const response = await axios.put(
-          `http://localhost:8000/edituserpassword/${loginUser.id}`,
-          { currentPassword: currentPassword, newPassword: newPassword },
-          { withCredentials: true }
-        );
-    
-        if (response.status === 200) {
-          console.log("User updated successfully");
-        } else {
-          setError("Failed to edit user");
-        }
-      } catch (error) {
-        setError("Failed to edit user");
+      if (!loginUser) {
+        setError("Login user data not available");
+        return;
       }
 
-    setIsChangingPassword(false)
-    setProfileError(null)
-  }
+      const response = await axios.put(
+        `http://localhost:8000/edituserpassword/${loginUser.id}`,
+        { currentPassword: currentPassword, newPassword: newPassword },
+        { withCredentials: true }
+      );
+
+      if (response.status === 200) {
+        toast("Password updated successfully");
+      } else {
+        toast(`Failed to edit Password: ${response.data.error || "Unknown error"}`);
+      }
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        toast(`Error: ${error.response?.data?.error || "Failed to edit Password"}`);
+      } else {
+        toast("An unexpected error occurred");
+      }
+    }
+
+    setIsChangingPassword(false);
+    setProfileError(null);
+};
+
+  
 
   const handleUploadProfilePicture = () => {
     // This would typically open a file picker
