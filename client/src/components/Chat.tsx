@@ -8,6 +8,7 @@ import Navbar from "./navbar"
 import MessageList from "./message-list"
 import MessageInput from "./message-input"
 import { Alert } from "./ui/alert"
+import { toast } from "sonner"
 
 
 export default function Chat() {
@@ -40,12 +41,15 @@ export default function Chat() {
   const handleRoomDelete = async (room_id: string, room_admin:string)=>{
     try{
       if (room_admin===loginUser?.id){
+        const confirmDelete = window.confirm("Are you sure you want to delete this room?");
+        if (!confirmDelete) return;
+        toast.success("Room deleted successfully");
       const response = await axios.delete(`http://localhost:8000/deleteroom/${room_id}`)
       setSuccess("Room deleted successfully")
       fetchRoom()
       }
       else{
-        setError("You are not authorized to delete this room")
+        toast("You are not authorized to delete this room")
       }
     }
     catch{
@@ -84,26 +88,35 @@ export default function Chat() {
       setError("All fields are required")
       return
     }
-
-    try {
-      const response = await axios.post(
-        "http://localhost:8000/createroom",
-        { admin: loginUser?.id, roomName, users: usertoCreateRoom },
-        { withCredentials: true },
-      )
-
-      setSuccess("Successfully created room")
-      setError(null)
+    if (loginUser?.id && roomName && usertoCreateRoom.length != 0){
+      createRoom(loginUser.id, roomName, usertoCreateRoom);
       setroomName("")
       setusertoCreateRoom([])
       fetchRoom()
       setCreateRoomOpen(false)
-    } catch (error: any) {
-      setError(`Failed to create room: ${error.response?.data?.message || error.message}`)
-      setSuccess(null)
-      setroomName("")
     }
-  }
+
+    
+
+  //   try {
+  //     const response = await axios.post(
+  //       "http://localhost:8000/createroom",
+  //       { admin: loginUser?.id, roomName, users: usertoCreateRoom },
+  //       { withCredentials: true },
+  //     )
+
+  //     setSuccess("Successfully created room")
+  //     setError(null)
+  //     setroomName("")
+  //     setusertoCreateRoom([])
+  //     fetchRoom()
+  //     setCreateRoomOpen(false)
+  //   } catch (error: any) {
+  //     setError(`Failed to create room: ${error.response?.data?.message || error.message}`)
+  //     setSuccess(null)
+  //     setroomName("")
+  //   }
+    }
 
   const handleSendMessage = () => {
     if (message.trim() && loginUser?.id) {
@@ -182,6 +195,8 @@ export default function Chat() {
           loginUser={loginUser}
           room={room}
         />
+        {/* {error && <p style={{ color: "red" }}>{error}</p>}
+        {success && <p style={{ color: "red" }}>{success}</p>} */}
       </div>
     </div>
   )

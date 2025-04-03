@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 
 type WebSocketHook = {
   messages: string[];
@@ -23,15 +24,13 @@ const useWebSocket = (room: string, selecteduser: string) => {
         const data= JSON.parse(event.data);
       if (data.type==="message"){
         setMessages((prev)=>[...prev, data.message])
-      } else if (data.type==="invite"){
-        alert(`Invitation:${data.message}`);
       } else if (data.type === "previousMessages") {
         const previousMessages = data.messages.map((msg: any) => `${msg.user.name}: ${msg.message}`);
         setMessages(previousMessages);
       } else if (data.type === "userUnavailable") {
         setMessages([data.message]); 
-      }else if (data.type === "error"){
-        setMessages([data.message]);
+      }else if (data.type === "error" || data.type === "success"){
+        toast(data.message);
       }else if (data.type === "userActive") {
         setActive((prev) => [...new Set([...prev, data.user])]); 
       } else if (data.type === "userInactive") {
@@ -56,9 +55,10 @@ const useWebSocket = (room: string, selecteduser: string) => {
     socket?.send(JSON.stringify({type:"inviteUser", room, invitedby, inviteMessage, invitedto}))
   };
 
-  const createRoom= ()=>{
-    socket?.send(JSON.stringify({type:"createRoom", room}))
+  const createRoom = (admin: string, room: string, users: string[]) => {
+    socket?.send(JSON.stringify({ type: "createRoom", admin, room, users }));
   };
+  
 
   return { active, messages, setActive, sendMessage, inviteUser, createRoom };
 };

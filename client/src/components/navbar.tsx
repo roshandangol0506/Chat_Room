@@ -46,10 +46,12 @@ export default function Navbar({
 
       <Dialog>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-1">
+        {loginUser?.id === roomAdmin ? <Button variant="outline" size="sm" className="gap-1">
             <Users className="h-4 w-4" />
             Invite
-          </Button>
+          </Button> : null}
+          
+
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
