@@ -7,8 +7,8 @@ type MessageListProps = {
 
 export default function MessageList({ messages, loginUser }: MessageListProps) {
   return (
-    <ScrollArea className="flex-1 p-4 bg-gray-50 dark:bg-gray-900">
-      <div className="space-y-4">
+    <ScrollArea className="flex-1 p-4 bg-gray-50 dark:bg-gray-900 overflow-auto">
+      <div className="space-y-4 min-h-0">
         {messages.map((msg, index) => {
           // Determine if message is from current user (simple heuristic)
           const isCurrentUser = msg.includes(loginUser?.username || "")
@@ -29,4 +29,3 @@ export default function MessageList({ messages, loginUser }: MessageListProps) {
     </ScrollArea>
   )
 }
-
