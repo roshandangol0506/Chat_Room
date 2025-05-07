@@ -33,8 +33,15 @@ import {
 import axios from "axios";
 import { toast } from "sonner";
 
+type RoomType = {
+  _id: string;
+  roomName: string;
+  admin: string | { _id: string; name: string; email: string };
+  users: string[];
+};
+
 type SidebarProps = {
-  rooms: { _id: string; roomName: string; admin: string; users: string[] }[];
+  rooms: RoomType[];
   users: {
     _id: string;
     name: string;
@@ -44,7 +51,7 @@ type SidebarProps = {
   loginUser: { id: string; username: string; email: string } | null;
   handleRoomChange: (
     roomId: string,
-    roomAdmin: string,
+    roomAdmin: string | { _id: string; name: string; email: string },
     roomUsers: string[] // Changed this from user objects to string IDs
   ) => void;
   createRoomOpen: boolean;
@@ -54,7 +61,10 @@ type SidebarProps = {
   usertoCreateRoom: string[];
   handleUserSelection: (userId: string, checked: boolean) => void;
   handleCreateRoom: () => void;
-  handleRoomDelete: (room_id: string, room_admin: string) => void;
+  handleRoomDelete: (
+    room_id: string,
+    room_admin: string | { _id: string; name: string; email: string }
+  ) => void;
   setError: (error: string) => void;
   error: string | null;
   success: string | null;
@@ -214,6 +224,17 @@ export default function Sidebar({
     // In a real implementation, you would handle the file upload
   };
 
+  // Helper function to check if user is admin of a room
+  const isUserAdmin = (room: RoomType) => {
+    if (!loginUser || !room.admin) return false;
+
+    if (typeof room.admin === "string") {
+      return room.admin === loginUser.id;
+    } else {
+      return room.admin._id === loginUser.id;
+    }
+  };
+
   return (
     <div className="w-full h-full flex flex-col">
       <div className="p-4 border-b border-gray-200 dark:border-gray-800">
@@ -318,18 +339,24 @@ export default function Sidebar({
                     variant="ghost"
                     className="justify-start font-normal"
                     onClick={() =>
-                      handleRoomChange(room._id, room.admin, room.users)
+                      handleRoomChange(
+                        room._id,
+                        room.admin || "",
+                        room.users || []
+                      )
                     }
                   >
                     # {room.roomName}
                   </Button>
 
-                  <Button
-                    className="ml-auto p-1 h-8 w-8 flex items-center justify-center"
-                    onClick={() => handleRoomDelete(room._id, room.admin)}
-                  >
-                    <Trash className="h-4 w-4" />
-                  </Button>
+                  {room.admin && isUserAdmin(room) && (
+                    <Button
+                      className="ml-auto p-1 h-8 w-8 flex items-center justify-center"
+                      onClick={() => handleRoomDelete(room._id, room.admin)}
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

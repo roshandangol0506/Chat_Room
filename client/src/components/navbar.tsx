@@ -17,8 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState } from "react";
-import axios from "axios";
+import { useState, useEffect } from "react";
 import { User, Users } from "lucide-react";
 
 type MemberType = {
@@ -28,12 +27,19 @@ type MemberType = {
   email: string;
 };
 
+type RoomType = {
+  _id: string;
+  roomName: string;
+  admin: string | { _id: string; name: string; email: string };
+  users: string[];
+};
+
 type NavbarProps = {
   currentRoomName: string;
   room: string;
   roomAdmin: string;
   roomMembers: MemberType[];
-  rooms: { _id: string; roomName: string; admin: string }[];
+  rooms: RoomType[];
   users: {
     _id: string;
     name: string;
@@ -44,9 +50,16 @@ type NavbarProps = {
   setinviteUserid: (id: string) => void;
   loginUser: { id: string; username: string; email: string } | null;
   inviteUser: (from: string, message: string, to: string) => void;
-  fetchRoom: () => void;
-  handleRemoveMember: (roomId: string, userId: string) => void;
+  fetchRoom?: () => void;
   setRoomMembers: React.Dispatch<React.SetStateAction<MemberType[]>>;
+  getRoomMembers: (roomId: string) => void;
+  roomMember: {
+    _id: string;
+    name: string;
+    username: string;
+    email: string;
+  }[];
+  removeRoomMembers: (roomId: string, userId: string) => void;
 };
 
 export default function Navbar({
@@ -62,64 +75,75 @@ export default function Navbar({
   loginUser,
   inviteUser,
   fetchRoom,
-  handleRemoveMember,
+  roomMember,
+  getRoomMembers,
+  removeRoomMembers,
 }: NavbarProps) {
-  const [localMembers, setLocalMembers] = useState(roomMembers);
+  // Local state to track dialog open state
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [membersDialogOpen, setMembersDialogOpen] = useState(false);
 
-  // Update local state when props change
-  if (JSON.stringify(localMembers) !== JSON.stringify(roomMembers)) {
-    setLocalMembers(roomMembers);
-  }
+  // Get the current room
+  const currentRoom = rooms.find((r) => r._id === room);
 
-  const handleRemoveMemberLocal = async (roomId: string, userId: string) => {
-    try {
-      // Update local state immediately for responsive UI
-      setLocalMembers((prevMembers) =>
-        prevMembers.filter((member) => member._id !== userId)
-      );
+  // Extract admin ID correctly whether it's a string or object
+  const adminId = currentRoom?.admin
+    ? typeof currentRoom.admin === "string"
+      ? currentRoom.admin
+      : currentRoom.admin?._id || ""
+    : "";
 
-      // Also update parent state
-      setRoomMembers((prevMembers) =>
-        prevMembers.filter((member) => member._id !== userId)
-      );
+  // Extract admin name for display
+  const adminName = currentRoom?.admin
+    ? typeof currentRoom.admin !== "string"
+      ? currentRoom.admin?.name || "Unknown"
+      : "Unknown"
+    : "Unknown";
 
-      // Call API to remove member
-      await axios.post(
-        "http://localhost:8000/removemember",
-        { room_id: roomId, user_id: userId },
-        { withCredentials: true }
-      );
-
-      // Refresh rooms data in background
-      fetchRoom();
-    } catch (error: any) {
-      console.error(
-        `Failed to delete room member: ${
-          error.response?.data?.message || error.message
-        }`
-      );
+  // Ensure room members are loaded when the room changes
+  useEffect(() => {
+    if (room) {
+      getRoomMembers(room);
     }
+  }, [room, getRoomMembers]);
+
+  const handleRemoveMemberLocal = (roomId: string, userId: string) => {
+    // We no longer need to call getRoomMembers immediately after
+    // since the WebSocket hook handles updating the state
+    removeRoomMembers(roomId, userId);
   };
+
+  const handleInviteRoomMember = (
+    invitedby: string,
+    roomName: string,
+    invitedto: string
+  ) => {
+    inviteUser(invitedby, `Join ${roomName}!`, invitedto);
+    // Close the dialog
+    setInviteDialogOpen(false);
+    // Clear the selected user
+    setinviteUserid("");
+  };
+
+  const isUserAdmin = loginUser?.id === adminId;
 
   return (
     <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex justify-between items-center">
       <div>
         <h2 className="text-lg font-semibold">{currentRoomName}</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {rooms.find((r) => r._id === room)
-            ? `Room ID: ${room}`
-            : "Select a room"}
+          {currentRoom ? `Room ID: ${room}` : "Select a room"}
         </p>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {loginUser?.id === roomAdmin
-            ? `You are admin ${roomAdmin}`
-            : `Admin is ${roomAdmin}`}
+          {isUserAdmin
+            ? `You are admin (${adminId})`
+            : `Admin is ${adminName} (${adminId})`}
         </p>
       </div>
 
       <div className="flex gap-2">
-        {loginUser?.id === roomAdmin && (
-          <Dialog>
+        {isUserAdmin && (
+          <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1">
                 <User className="h-4 w-4" />
@@ -136,18 +160,23 @@ export default function Navbar({
                     <SelectValue placeholder="Select user to invite" />
                   </SelectTrigger>
                   <SelectContent>
-                    {users.map((user) => (
-                      <SelectItem key={user._id} value={user._id}>
-                        {user.name}
-                      </SelectItem>
-                    ))}
+                    {users
+                      .filter(
+                        (user) =>
+                          !roomMember.some((member) => member._id === user._id)
+                      )
+                      .map((user) => (
+                        <SelectItem key={user._id} value={user._id}>
+                          {user.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
                 <Button
                   onClick={() =>
-                    inviteUser(
+                    handleInviteRoomMember(
                       loginUser?.id || "",
-                      `Join ${currentRoomName}!`,
+                      currentRoomName,
                       inviteUserid
                     )
                   }
@@ -161,27 +190,27 @@ export default function Navbar({
           </Dialog>
         )}
 
-        <Dialog>
+        <Dialog open={membersDialogOpen} onOpenChange={setMembersDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1">
               <Users className="h-4 w-4" />
-              Members ({localMembers.length})
+              Members ({roomMember.length})
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Total Members ({localMembers.length})</DialogTitle>
+              <DialogTitle>Total Members ({roomMember.length})</DialogTitle>
             </DialogHeader>
             <div className="space-y-2 py-2">
-              {localMembers && localMembers.length > 0 ? (
+              {roomMember && roomMember.length > 0 ? (
                 <ul className="flex flex-col gap-2">
-                  {localMembers.map((member) => (
+                  {roomMember.map((member) => (
                     <li
                       key={member._id}
                       className="p-2 rounded border bg-gray-100 text-sm flex justify-between items-center"
                     >
                       <div className="font-medium truncate">{member.name}</div>
-                      {loginUser?.id === roomAdmin && (
+                      {isUserAdmin && member._id !== loginUser?.id && (
                         <Button
                           onClick={() =>
                             handleRemoveMemberLocal(room, member._id)

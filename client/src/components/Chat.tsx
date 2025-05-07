@@ -16,13 +16,17 @@ type MemberType = {
   email: string;
 };
 
+type RoomType = {
+  _id: string;
+  roomName: string;
+  admin: string | { _id: string; name: string; email: string };
+  users: string[];
+};
+
 export default function Chat() {
   const [room, setRoom] = useState<string>("");
   const [roomAdmin, setRoomAdmin] = useState<string>("");
   const [roomMembers, setRoomMembers] = useState<MemberType[]>([]);
-  const [rooms, setRooms] = useState<
-    { _id: string; roomName: string; admin: string; users: string[] }[]
-  >([]);
   const [users, setUsers] = useState<
     {
       _id: string;
@@ -42,24 +46,39 @@ export default function Chat() {
   const {
     messages,
     active,
+    roomMember,
+    rooms,
     sendMessage,
     joinRoom,
     setActive,
     inviteUser,
     createRoom,
+    getRoomMembers,
+    removeRoomMembers,
+    isConnected,
   } = useWebSocket(room, loginUser?.id || "");
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const handleRoomChange = async (
     roomId: string,
-    roomAdmin: string,
+    roomAdmin: string | { _id: string; name: string; email: string } | "",
     roomUserIds: string[]
   ) => {
     setRoom(roomId);
-    setRoomAdmin(roomAdmin);
+
+    // Extract admin ID correctly whether it's a string or object, with safety checks
+    const adminId = roomAdmin
+      ? typeof roomAdmin === "string"
+        ? roomAdmin
+        : roomAdmin._id || ""
+      : "";
+    setRoomAdmin(adminId);
+
+    getRoomMembers(roomId);
     joinRoom(roomId, loginUser?.id || "");
 
     try {
@@ -69,15 +88,25 @@ export default function Chat() {
         .filter(Boolean) as MemberType[];
 
       console.log("Setting room members:", memberDetails);
-      setRoomMembers(roomUserIds as MemberType[]);
+      setRoomMembers(memberDetails);
     } catch (error) {
       console.error("Error mapping room members:", error);
     }
   };
 
-  const handleRoomDelete = async (room_id: string, room_admin: string) => {
+  const handleRoomDelete = async (
+    room_id: string,
+    room_admin: string | { _id: string; name: string; email: string } | ""
+  ) => {
     try {
-      if (room_admin === loginUser?.id) {
+      // Extract admin ID correctly whether it's a string or object, with safety checks
+      const adminId = room_admin
+        ? typeof room_admin === "string"
+          ? room_admin
+          : room_admin._id || ""
+        : "";
+
+      if (adminId === loginUser?.id) {
         const confirmDelete = window.confirm(
           "Are you sure you want to delete this room?"
         );
@@ -87,7 +116,7 @@ export default function Chat() {
           `http://localhost:8000/deleteroom/${room_id}`
         );
         setSuccess("Room deleted successfully");
-        fetchRoom();
+        // No need to call fetchRoom as the WebSocket will update the rooms
       } else {
         toast("You are not authorized to delete this room");
       }
@@ -104,53 +133,6 @@ export default function Chat() {
     );
   };
 
-  const fetchRoom = async () => {
-    try {
-      const response = await axios.get("http://localhost:8000/getroom");
-      setRooms(response.data.data);
-
-      // If we have a current room selected, update its members
-      if (room) {
-        const currentRoom = response.data.data.find((r: any) => r._id === room);
-        if (currentRoom) {
-          const memberDetails = currentRoom.users
-            .map((userId: string) => users.find((user) => user._id === userId))
-            .filter(Boolean) as MemberType[];
-
-          setRoomMembers(memberDetails);
-        }
-      }
-
-      setError(null);
-    } catch (error) {
-      setError(`Failed to fetch rooms: ${error}`);
-    }
-  };
-
-  const fetchUser = async () => {
-    try {
-      const response = await axios.get("http://localhost:8000/user");
-      setUsers(response.data.data);
-      setError(null);
-
-      // If we already have a room selected, update its members with the new user data
-      if (room) {
-        const currentRoom = rooms.find((r) => r._id === room);
-        if (currentRoom) {
-          const memberDetails = currentRoom.users
-            .map((userId) =>
-              response.data.data.find((user: any) => user._id === userId)
-            )
-            .filter(Boolean) as MemberType[];
-
-          setRoomMembers(memberDetails);
-        }
-      }
-    } catch (error) {
-      setError(`Failed to fetch Users: ${error}`);
-    }
-  };
-
   const handleCreateRoom = async () => {
     if (!roomName || usertoCreateRoom.length === 0) {
       setError("All fields are required");
@@ -160,30 +142,7 @@ export default function Chat() {
       createRoom(loginUser.id, roomName, usertoCreateRoom);
       setroomName("");
       setusertoCreateRoom([]);
-      fetchRoom();
       setCreateRoomOpen(false);
-    }
-  };
-
-  const handleRemoveMember = async (roomId: string, userId: string) => {
-    try {
-      await axios.post(
-        "http://localhost:8000/removemember",
-        { room_id: roomId, user_id: userId },
-        { withCredentials: true }
-      );
-
-      // Update local state immediately
-      setRoomMembers((prev) => prev.filter((member) => member._id !== userId));
-
-      // Refresh rooms data
-      fetchRoom();
-    } catch (error: any) {
-      console.error(
-        `Failed to delete room members: ${
-          error.response?.data?.message || error.message
-        }`
-      );
     }
   };
 
@@ -195,9 +154,14 @@ export default function Chat() {
   };
 
   useEffect(() => {
-    fetchRoom();
-    fetchUser();
-    fetchLoginUser();
+    const loadInitialData = async () => {
+      setIsLoading(true);
+      await fetchLoginUser();
+      await fetchUser();
+      setIsLoading(false);
+    };
+
+    loadInitialData();
   }, []);
 
   useEffect(() => {
@@ -210,25 +174,52 @@ export default function Chat() {
     }
   }, [loginUser, setActive]);
 
+  const fetchUser = async () => {
+    try {
+      const response = await axios.get("http://localhost:8000/user");
+      setUsers(response.data.data);
+      setError(null);
+    } catch (error) {
+      setError(`Failed to fetch Users: ${error}`);
+    }
+  };
+
   const fetchLoginUser = async () => {
-    fetch("http://localhost:8000/checkAuth", {
-      method: "GET",
-      credentials: "include",
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.isAuthenticated) {
-          setLoginUser({
-            id: data.userId,
-            username: data.username,
-            email: data.email,
-          });
-        }
+    try {
+      const response = await fetch("http://localhost:8000/checkAuth", {
+        method: "GET",
+        credentials: "include",
       });
+
+      const data = await response.json();
+
+      if (data.isAuthenticated) {
+        setLoginUser({
+          id: data.userId,
+          username: data.username,
+          email: data.email,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching login user:", error);
+    }
   };
 
   // Find current room name
   const currentRoomName = rooms.find((r) => r._id === room)?.roomName || "Chat";
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">
+            Loading chat...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
@@ -269,9 +260,10 @@ export default function Chat() {
             setinviteUserid={setinviteUserid}
             loginUser={loginUser}
             inviteUser={inviteUser}
-            fetchRoom={fetchRoom}
-            handleRemoveMember={handleRemoveMember}
             setRoomMembers={setRoomMembers}
+            roomMember={roomMember}
+            getRoomMembers={getRoomMembers}
+            removeRoomMembers={removeRoomMembers}
           />
         </div>
 

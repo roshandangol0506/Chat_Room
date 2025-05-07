@@ -19,12 +19,18 @@ export async function middleware(request: NextRequest) {
     const authData = await authCheckResponse.json();
 
     // Redirect unauthorized users trying to access /Chat
-    if (!authData.isAuthenticated && request.nextUrl.pathname.startsWith("/Chat")) {
+    if (
+      !authData.isAuthenticated &&
+      request.nextUrl.pathname.startsWith("/Chat")
+    ) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
 
     // Redirect logged-in users away from login page
-    if (authData.isAuthenticated && request.nextUrl.pathname.startsWith("/login")) {
+    if (
+      authData.isAuthenticated &&
+      request.nextUrl.pathname.startsWith("/login")
+    ) {
       return NextResponse.redirect(new URL("/Chat", request.url));
     }
 
@@ -36,5 +42,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/Chat/:path*", "/login"], // Applies middleware to /Chat and /login pages
+  matcher: ["/Chat/:path*", "/login"],
 };
